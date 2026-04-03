@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, TrendingUp } from 'lucide-react';
-import { getPlayers, getMatchEntries } from '@/lib/storage';
+import { subscribeMatchEntries, subscribePlayers } from '@/lib/storage';
 import { calculatePlayerStats, getLeaderboard } from '@/lib/analytics';
 import { Player, MatchEntry, PlayerStats } from '@/lib/types';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, Legend } from 'recharts';
+import { toast } from 'sonner';
 
 export default function AnalyticsPage() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -12,9 +13,12 @@ export default function AnalyticsPage() {
   const [selectedPlayer, setSelectedPlayer] = useState<string>('all');
 
   useEffect(() => {
-    const p = getPlayers();
-    setPlayers(p);
-    setEntries(getMatchEntries());
+    const unsubPlayers = subscribePlayers(setPlayers, () => toast.error('Failed to load players from Firebase'));
+    const unsubEntries = subscribeMatchEntries(setEntries, () => toast.error('Failed to load match entries from Firebase'));
+    return () => {
+      unsubPlayers();
+      unsubEntries();
+    };
   }, []);
 
   const leaderboard = getLeaderboard(players, entries);

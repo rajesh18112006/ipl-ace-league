@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { CalendarDays, ChevronRight, Edit3, Lock, Unlock, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { getPlayers, getMatchEntries, addMatchEntry, deleteMatchEntry, updateMatchEntry } from '@/lib/storage';
+import { addMatchEntry, deleteMatchEntry, subscribeMatchEntries, subscribePlayers, updateMatchEntry } from '@/lib/storage';
 import { IPL_SCHEDULE, IPL_TEAMS, getTodayMatch } from '@/lib/ipl-schedule';
 import { Player, MatchEntry } from '@/lib/types';
 import { isMatchFullyAssigned } from '@/lib/match-scoring';
@@ -23,18 +23,17 @@ export default function MatchEntryPage() {
   const [showUnlockPassword, setShowUnlockPassword] = useState(false);
 
   useEffect(() => {
-    const p = getPlayers();
-    setPlayers(p);
-    setEntries(getMatchEntries());
+    const unsubPlayers = subscribePlayers(setPlayers, () => toast.error('Failed to load players from Firebase'));
+    const unsubEntries = subscribeMatchEntries(setEntries, () => toast.error('Failed to load match entries from Firebase'));
     // Default to today's match
     const todayMatch = getTodayMatch();
     if (todayMatch) setSelectedMatchId(todayMatch.id);
     else if (IPL_SCHEDULE.length > 0) setSelectedMatchId(IPL_SCHEDULE[0].id);
+    return () => {
+      unsubPlayers();
+      unsubEntries();
+    };
   }, []);
-
-  const reload = () => {
-    setEntries(getMatchEntries());
-  };
 
   const selectedEntry = useMemo(
     () => entries.find(e => e.matchId === selectedMatchId) || null,
@@ -138,7 +137,7 @@ export default function MatchEntryPage() {
     return true;
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (!selectedMatchId) return toast.error('Select a match');
     if (players.length === 0) return toast.error('Add players first');
     if (isLocked) return toast.error('This match is Locked. Unlock to edit.');
@@ -147,23 +146,25 @@ export default function MatchEntryPage() {
     if (!validateDuplicateRanks(rankingsData)) return;
 
     const existing = entries.find(e => e.matchId === selectedMatchId);
-    if (existing) {
-      updateMatchEntry(existing.id, { rankings: rankingsData, status: 'Draft', tieSystemEnabled });
+    try {
+      if (existing) {
+        await updateMatchEntry(existing.id, { rankings: rankingsData, status: 'Draft', tieSystemEnabled });
+      } else {
+        await addMatchEntry({
+          matchId: selectedMatchId,
+          date: selectedMatch?.date || '',
+          rankings: rankingsData,
+          status: 'Draft',
+          tieSystemEnabled,
+        });
+      }
       toast.success('Draft saved!');
-    } else {
-      addMatchEntry({
-        matchId: selectedMatchId,
-        date: selectedMatch?.date || '',
-        rankings: rankingsData,
-        status: 'Draft',
-        tieSystemEnabled,
-      });
-      toast.success('Draft saved!');
+    } catch {
+      toast.error('Failed to save draft');
     }
-    reload();
   };
 
-  const handleFinalize = () => {
+  const handleFinalize = async () => {
     if (!selectedMatchId) return toast.error('Select a match');
     if (players.length === 0) return toast.error('Add players first');
     if (isLocked) return toast.error('This match is Locked.');
@@ -177,23 +178,25 @@ export default function MatchEntryPage() {
     if (!validateDuplicateRanks(rankingsData)) return;
 
     const existing = entries.find(e => e.matchId === selectedMatchId);
-    if (existing) {
-      updateMatchEntry(existing.id, { rankings: rankingsData, status: 'Locked', tieSystemEnabled });
+    try {
+      if (existing) {
+        await updateMatchEntry(existing.id, { rankings: rankingsData, status: 'Locked', tieSystemEnabled });
+      } else {
+        await addMatchEntry({
+          matchId: selectedMatchId,
+          date: selectedMatch?.date || '',
+          rankings: rankingsData,
+          status: 'Locked',
+          tieSystemEnabled,
+        });
+      }
       toast.success('Match finalized and locked!');
-    } else {
-      addMatchEntry({
-        matchId: selectedMatchId,
-        date: selectedMatch?.date || '',
-        rankings: rankingsData,
-        status: 'Locked',
-        tieSystemEnabled,
-      });
-      toast.success('Match finalized and locked!');
+    } catch {
+      toast.error('Failed to finalize match');
     }
-    reload();
   };
 
-  const handleUnlock = () => {
+  const handleUnlock = async () => {
     if (!selectedEntry) return;
     if (selectedEntry.status !== 'Locked') return;
 
@@ -204,16 +207,22 @@ export default function MatchEntryPage() {
     }
 
     setUnlockError(null);
-    updateMatchEntry(selectedEntry.id, { status: 'Draft' });
-    toast.success('Match unlocked. Save draft or finalize again.');
-    reload();
+    try {
+      await updateMatchEntry(selectedEntry.id, { status: 'Draft' });
+      toast.success('Match unlocked. Save draft or finalize again.');
+    } catch {
+      toast.error('Failed to unlock match');
+    }
   };
 
-  const handleDelete = (id: string, status?: string) => {
+  const handleDelete = async (id: string, status?: string) => {
     if (status === 'Locked') return toast.error('This match is Locked. Unlock to edit.');
-    deleteMatchEntry(id);
-    toast.success('Entry deleted');
-    reload();
+    try {
+      await deleteMatchEntry(id);
+      toast.success('Entry deleted');
+    } catch {
+      toast.error('Failed to delete entry');
+    }
   };
 
   return (

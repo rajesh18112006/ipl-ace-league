@@ -1,137 +1,111 @@
-import { MatchEntry, MatchStatus, Player, PlayerMatchValue } from './types';
+import { collection, deleteDoc, doc, getDocs, onSnapshot, orderBy, query, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import { collection, deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { MatchEntry, MatchStatus, Player, PlayerMatchValue } from './types';
 
-const PLAYERS_KEY = 'ipl_fantasy_players';
-const MATCHES_KEY = 'ipl_fantasy_matches';
+function normalizeMatchEntry(raw: unknown): MatchEntry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const matchId = typeof r.matchId === 'string' ? r.matchId : '';
+  if (!matchId) return null;
 
-export function getPlayers(): Player[] {
-  const data = localStorage.getItem(PLAYERS_KEY);
-  return data ? JSON.parse(data) : [];
+  const id = typeof r.id === 'string' ? r.id : crypto.randomUUID();
+  const date = typeof r.date === 'string' ? r.date : '';
+
+  const status: MatchStatus | undefined = typeof r.status === 'string' ? (r.status as MatchStatus) : undefined;
+  const normalizedStatus: MatchEntry['status'] =
+    status && status !== 'Upcoming' ? status : 'Completed';
+
+  const tieSystemEnabled = typeof r.tieSystemEnabled === 'boolean' ? r.tieSystemEnabled : false;
+
+  const rankingsRaw = r.rankings && typeof r.rankings === 'object' ? (r.rankings as Record<string, unknown>) : {};
+  const rankings: Partial<Record<string, PlayerMatchValue>> = {};
+  for (const [pid, v] of Object.entries(rankingsRaw)) {
+    if (typeof v === 'number' && Number.isFinite(v)) rankings[pid] = v;
+    else if (v === null || v === 'not_played') rankings[pid] = 'not_played';
+  }
+
+  return {
+    id,
+    matchId,
+    date,
+    status: normalizedStatus,
+    tieSystemEnabled,
+    rankings,
+  };
 }
 
-export function savePlayers(players: Player[]) {
-  localStorage.setItem(PLAYERS_KEY, JSON.stringify(players));
-
-  // Mirror to Firestore (best-effort, non-blocking)
-  players.forEach(player => {
-    void setDoc(doc(collection(db, 'players'), player.id), player).catch(() => {
-      // swallow Firestore errors; local copy still works
-    });
-  });
+// ---- Players (Firestore only) ----
+export function subscribePlayers(onChange: (players: Player[]) => void, onError?: (e: unknown) => void) {
+  const q = query(collection(db, 'players'), orderBy('createdAt', 'asc'));
+  return onSnapshot(
+    q,
+    snap => {
+      const players = snap.docs
+        .map(d => d.data() as Player)
+        .filter(p => p && typeof p.id === 'string' && typeof p.name === 'string');
+      onChange(players);
+    },
+    err => onError?.(err),
+  );
 }
 
-export function addPlayer(name: string): Player {
-  const players = getPlayers();
+export async function fetchPlayers(): Promise<Player[]> {
+  const snap = await getDocs(query(collection(db, 'players'), orderBy('createdAt', 'asc')));
+  return snap.docs.map(d => d.data() as Player);
+}
+
+export async function addPlayer(name: string): Promise<Player> {
   const player: Player = {
     id: crypto.randomUUID(),
     name: name.trim(),
     createdAt: new Date().toISOString(),
   };
-  players.push(player);
-  savePlayers(players);
-  void setDoc(doc(collection(db, 'players'), player.id), player).catch(() => {});
+  await setDoc(doc(db, 'players', player.id), player);
   return player;
 }
 
-export function removePlayer(id: string) {
-  const remaining = getPlayers().filter(p => p.id !== id);
-  savePlayers(remaining);
-  void deleteDoc(doc(collection(db, 'players'), id)).catch(() => {});
+export async function removePlayer(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'players', id));
 }
 
-export function updatePlayer(id: string, name: string) {
-  const players = getPlayers();
-  const idx = players.findIndex(p => p.id === id);
-  if (idx !== -1) {
-    players[idx].name = name.trim();
-    savePlayers(players);
-    void setDoc(doc(collection(db, 'players'), players[idx].id), players[idx]).catch(() => {});
-  }
+export async function updatePlayer(id: string, name: string): Promise<void> {
+  await setDoc(doc(db, 'players', id), { name: name.trim() }, { merge: true });
 }
 
-export function getMatchEntries(): MatchEntry[] {
-  const data = localStorage.getItem(MATCHES_KEY);
-  if (!data) return [];
-  try {
-    const parsed = JSON.parse(data);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((raw: unknown): MatchEntry | null => {
-        if (!raw || typeof raw !== 'object') return null;
-        const r = raw as Record<string, unknown>;
-        const matchId = typeof r.matchId === 'string' ? r.matchId : '';
-        if (!matchId) return null;
-
-        const id = typeof r.id === 'string' ? r.id : crypto.randomUUID();
-        const date = typeof r.date === 'string' ? r.date : '';
-
-        const status: MatchStatus | undefined = typeof r.status === 'string' ? (r.status as MatchStatus) : undefined;
-        // Backward compatibility: old entries had no status.
-        const normalizedStatus: MatchEntry['status'] =
-          status && status !== 'Upcoming' ? status : 'Completed';
-
-        const tieSystemEnabled = typeof r.tieSystemEnabled === 'boolean' ? r.tieSystemEnabled : false;
-
-        const rankingsRaw = r.rankings && typeof r.rankings === 'object' ? r.rankings as Record<string, unknown> : {};
-        const rankings: Partial<Record<string, PlayerMatchValue>> = {};
-        for (const [pid, v] of Object.entries(rankingsRaw)) {
-          if (typeof v === 'number' && Number.isFinite(v)) {
-            // Keep as-is; final validation happens before scoring.
-            rankings[pid] = v;
-          } else if (v === null || v === 'not_played') {
-            // Legacy data used `null` to represent Missed; we treat it as Not Played.
-            rankings[pid] = 'not_played';
-          }
-        }
-
-        return {
-          id,
-          matchId,
-          date,
-          status: normalizedStatus,
-          tieSystemEnabled,
-          rankings,
-        };
-      })
-      .filter(Boolean) as MatchEntry[];
-  } catch {
-    return [];
-  }
+// ---- Match entries (Firestore only) ----
+export function subscribeMatchEntries(onChange: (entries: MatchEntry[]) => void, onError?: (e: unknown) => void) {
+  const q = query(collection(db, 'matchEntries'));
+  return onSnapshot(
+    q,
+    snap => {
+      const entries = snap.docs
+        .map(d => normalizeMatchEntry(d.data()))
+        .filter(Boolean) as MatchEntry[];
+      onChange(entries);
+    },
+    err => onError?.(err),
+  );
 }
 
-export function saveMatchEntries(entries: MatchEntry[]) {
-  localStorage.setItem(MATCHES_KEY, JSON.stringify(entries));
-
-  // Mirror to Firestore (best-effort, non-blocking)
-  entries.forEach(entry => {
-    void setDoc(doc(collection(db, 'matchEntries'), entry.id), entry).catch(() => {});
-  });
+export async function fetchMatchEntries(): Promise<MatchEntry[]> {
+  const snap = await getDocs(collection(db, 'matchEntries'));
+  return snap.docs
+    .map(d => normalizeMatchEntry(d.data()))
+    .filter(Boolean) as MatchEntry[];
 }
 
-export function addMatchEntry(entry: Omit<MatchEntry, 'id'>): MatchEntry {
-  const entries = getMatchEntries();
+export async function addMatchEntry(entry: Omit<MatchEntry, 'id'>): Promise<MatchEntry> {
   const full: MatchEntry = { ...entry, id: crypto.randomUUID() };
-  entries.push(full);
-  saveMatchEntries(entries);
-  void setDoc(doc(collection(db, 'matchEntries'), full.id), full).catch(() => {});
+  await setDoc(doc(db, 'matchEntries', full.id), full);
   return full;
 }
 
-export function updateMatchEntry(id: string, data: Partial<MatchEntry>) {
-  const entries = getMatchEntries();
-  const idx = entries.findIndex(e => e.id === id);
-  if (idx !== -1) {
-    entries[idx] = { ...entries[idx], ...data };
-    saveMatchEntries(entries);
-    void setDoc(doc(collection(db, 'matchEntries'), entries[idx].id), entries[idx]).catch(() => {});
-  }
+export async function updateMatchEntry(id: string, data: Partial<MatchEntry>): Promise<void> {
+  await setDoc(doc(db, 'matchEntries', id), data, { merge: true });
 }
 
-export function deleteMatchEntry(id: string) {
-  const remaining = getMatchEntries().filter(e => e.id !== id);
-  saveMatchEntries(remaining);
-  void deleteDoc(doc(collection(db, 'matchEntries'), id)).catch(() => {});
+export async function deleteMatchEntry(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'matchEntries', id));
 }
 
 export function getPointsForRank(rank: number, totalPlayers: number): number {
@@ -145,23 +119,33 @@ export function getPointsForRank(rank: number, totalPlayers: number): number {
   return totalPlayers - rank + 1;
 }
 
-export function exportData(): string {
-  return JSON.stringify({
-    players: getPlayers(),
-    matchEntries: getMatchEntries(),
-    exportedAt: new Date().toISOString(),
-  }, null, 2);
+export async function exportData(): Promise<string> {
+  const [players, matchEntries] = await Promise.all([fetchPlayers(), fetchMatchEntries()]);
+  return JSON.stringify(
+    {
+      players,
+      matchEntries,
+      exportedAt: new Date().toISOString(),
+    },
+    null,
+    2,
+  );
 }
 
-export function importData(json: string): boolean {
+export async function importData(json: string): Promise<boolean> {
   try {
     const data = JSON.parse(json);
-    if (data.players && data.matchEntries) {
-      savePlayers(data.players);
-      saveMatchEntries(data.matchEntries);
-      return true;
-    }
-    return false;
+    if (!data?.players || !data?.matchEntries) return false;
+
+    const players: Player[] = Array.isArray(data.players) ? data.players : [];
+    const entries: MatchEntry[] = Array.isArray(data.matchEntries) ? data.matchEntries : [];
+
+    await Promise.all([
+      ...players.map(p => setDoc(doc(db, 'players', p.id), p)),
+      ...entries.map(e => setDoc(doc(db, 'matchEntries', e.id), e)),
+    ]);
+
+    return true;
   } catch {
     return false;
   }

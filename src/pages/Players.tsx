@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Users, Plus, Trash2, Edit3, Check, X } from 'lucide-react';
-import { getPlayers, addPlayer, removePlayer, updatePlayer } from '@/lib/storage';
+import { addPlayer, removePlayer, subscribePlayers, updatePlayer } from '@/lib/storage';
 import { Player } from '@/lib/types';
 import { toast } from 'sonner';
 
@@ -11,30 +11,41 @@ export default function PlayersPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
-  const reload = () => setPlayers(getPlayers());
-  useEffect(reload, []);
+  useEffect(() => {
+    const unsub = subscribePlayers(setPlayers, () => toast.error('Failed to load players from Firebase'));
+    return () => unsub();
+  }, []);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!newName.trim()) return toast.error('Enter a name');
     if (players.some(p => p.name.toLowerCase() === newName.trim().toLowerCase())) return toast.error('Player already exists');
-    addPlayer(newName);
-    setNewName('');
-    reload();
-    toast.success('Player added!');
+    try {
+      await addPlayer(newName);
+      setNewName('');
+      toast.success('Player added!');
+    } catch {
+      toast.error('Failed to add player');
+    }
   };
 
-  const handleDelete = (id: string) => {
-    removePlayer(id);
-    reload();
-    toast.success('Player removed');
+  const handleDelete = async (id: string) => {
+    try {
+      await removePlayer(id);
+      toast.success('Player removed');
+    } catch {
+      toast.error('Failed to remove player');
+    }
   };
 
-  const handleEdit = (id: string) => {
+  const handleEdit = async (id: string) => {
     if (!editName.trim()) return;
-    updatePlayer(id, editName);
-    setEditingId(null);
-    reload();
-    toast.success('Player updated');
+    try {
+      await updatePlayer(id, editName);
+      setEditingId(null);
+      toast.success('Player updated');
+    } catch {
+      toast.error('Failed to update player');
+    }
   };
 
   return (

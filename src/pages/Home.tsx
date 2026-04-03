@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy, Zap, Calendar, Star } from 'lucide-react';
-import { getPlayers, getMatchEntries } from '@/lib/storage';
+import { subscribeMatchEntries, subscribePlayers } from '@/lib/storage';
 import { getLeaderboard, getDayTopPerformer } from '@/lib/analytics';
 import { getTodayMatch, getUpcomingMatches, IPL_SCHEDULE, IPL_TEAMS } from '@/lib/ipl-schedule';
 import { Link } from 'react-router-dom';
 import { Player, MatchEntry } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getMatchDate, isMatchFullyAssigned } from '@/lib/match-scoring';
+import { toast } from 'sonner';
 
 const fadeUp = (i: number) => ({
   initial: { opacity: 0, y: 20 },
@@ -19,8 +20,12 @@ export default function HomePage() {
   const [entries, setEntries] = useState<MatchEntry[]>([]);
 
   useEffect(() => {
-    setPlayers(getPlayers());
-    setEntries(getMatchEntries());
+    const unsubPlayers = subscribePlayers(setPlayers, () => toast.error('Failed to load players from Firebase'));
+    const unsubEntries = subscribeMatchEntries(setEntries, () => toast.error('Failed to load match entries from Firebase'));
+    return () => {
+      unsubPlayers();
+      unsubEntries();
+    };
   }, []);
 
   const todayMatch = getTodayMatch();

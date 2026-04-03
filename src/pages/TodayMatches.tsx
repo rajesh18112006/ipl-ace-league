@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CalendarDays } from 'lucide-react';
-import { getPlayers, getMatchEntries } from '@/lib/storage';
+import { subscribeMatchEntries, subscribePlayers } from '@/lib/storage';
 import { IPL_SCHEDULE } from '@/lib/ipl-schedule';
 import { isMatchFullyAssigned } from '@/lib/match-scoring';
 import { MatchEntry, Player } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 
 export default function TodayMatchesPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [entries, setEntries] = useState<MatchEntry[]>([]);
 
   useEffect(() => {
-    setPlayers(getPlayers());
-    setEntries(getMatchEntries());
+    const unsubPlayers = subscribePlayers(setPlayers, () => toast.error('Failed to load players from Firebase'));
+    const unsubEntries = subscribeMatchEntries(setEntries, () => toast.error('Failed to load match entries from Firebase'));
+    return () => {
+      unsubPlayers();
+      unsubEntries();
+    };
   }, []);
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);

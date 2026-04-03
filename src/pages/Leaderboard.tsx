@@ -1,20 +1,25 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy, TrendingUp, Flame, Target } from 'lucide-react';
-import { getPlayers, getMatchEntries } from '@/lib/storage';
+import { subscribeMatchEntries, subscribePlayers } from '@/lib/storage';
 import { getLeaderboard, getBadges } from '@/lib/analytics';
 import { Player, MatchEntry, PlayerStats } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { IPL_SCHEDULE } from '@/lib/ipl-schedule';
 import { isMatchFullyAssigned } from '@/lib/match-scoring';
+import { toast } from 'sonner';
 
 export default function LeaderboardPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [entries, setEntries] = useState<MatchEntry[]>([]);
 
   useEffect(() => {
-    setPlayers(getPlayers());
-    setEntries(getMatchEntries());
+    const unsubPlayers = subscribePlayers(setPlayers, () => toast.error('Failed to load players from Firebase'));
+    const unsubEntries = subscribeMatchEntries(setEntries, () => toast.error('Failed to load match entries from Firebase'));
+    return () => {
+      unsubPlayers();
+      unsubEntries();
+    };
   }, []);
 
   const leaderboard = getLeaderboard(players, entries);

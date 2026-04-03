@@ -19,27 +19,36 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleExport = () => {
-    const blob = new Blob([exportData()], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ipl-fantasy-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Data exported successfully!');
+  const handleExport = async () => {
+    try {
+      const json = await exportData();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ipl-fantasy-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Data exported successfully!');
+    } catch {
+      toast.error('Export failed');
+    }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      if (importData(reader.result as string)) {
-        toast.success('Data imported! Refreshing...');
-        setTimeout(() => window.location.reload(), 500);
-      } else {
-        toast.error('Invalid data file');
+    reader.onload = async () => {
+      try {
+        const ok = await importData(reader.result as string);
+        if (ok) {
+          toast.success('Data imported!');
+        } else {
+          toast.error('Invalid data file');
+        }
+      } catch {
+        toast.error('Import failed');
       }
     };
     reader.readAsText(file);
