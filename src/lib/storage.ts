@@ -1,4 +1,6 @@
 import { MatchEntry, MatchStatus, Player, PlayerMatchValue } from './types';
+import { db } from './firebase';
+import { collection, deleteDoc, doc, setDoc } from 'firebase/firestore';
 
 const PLAYERS_KEY = 'ipl_fantasy_players';
 const MATCHES_KEY = 'ipl_fantasy_matches';
@@ -10,6 +12,13 @@ export function getPlayers(): Player[] {
 
 export function savePlayers(players: Player[]) {
   localStorage.setItem(PLAYERS_KEY, JSON.stringify(players));
+
+  // Mirror to Firestore (best-effort, non-blocking)
+  players.forEach(player => {
+    void setDoc(doc(collection(db, 'players'), player.id), player).catch(() => {
+      // swallow Firestore errors; local copy still works
+    });
+  });
 }
 
 export function addPlayer(name: string): Player {
@@ -21,11 +30,14 @@ export function addPlayer(name: string): Player {
   };
   players.push(player);
   savePlayers(players);
+  void setDoc(doc(collection(db, 'players'), player.id), player).catch(() => {});
   return player;
 }
 
 export function removePlayer(id: string) {
-  savePlayers(getPlayers().filter(p => p.id !== id));
+  const remaining = getPlayers().filter(p => p.id !== id);
+  savePlayers(remaining);
+  void deleteDoc(doc(collection(db, 'players'), id)).catch(() => {});
 }
 
 export function updatePlayer(id: string, name: string) {
@@ -34,6 +46,7 @@ export function updatePlayer(id: string, name: string) {
   if (idx !== -1) {
     players[idx].name = name.trim();
     savePlayers(players);
+    void setDoc(doc(collection(db, 'players'), players[idx].id), players[idx]).catch(() => {});
   }
 }
 
@@ -89,6 +102,11 @@ export function getMatchEntries(): MatchEntry[] {
 
 export function saveMatchEntries(entries: MatchEntry[]) {
   localStorage.setItem(MATCHES_KEY, JSON.stringify(entries));
+
+  // Mirror to Firestore (best-effort, non-blocking)
+  entries.forEach(entry => {
+    void setDoc(doc(collection(db, 'matchEntries'), entry.id), entry).catch(() => {});
+  });
 }
 
 export function addMatchEntry(entry: Omit<MatchEntry, 'id'>): MatchEntry {
@@ -96,6 +114,7 @@ export function addMatchEntry(entry: Omit<MatchEntry, 'id'>): MatchEntry {
   const full: MatchEntry = { ...entry, id: crypto.randomUUID() };
   entries.push(full);
   saveMatchEntries(entries);
+  void setDoc(doc(collection(db, 'matchEntries'), full.id), full).catch(() => {});
   return full;
 }
 
@@ -105,11 +124,14 @@ export function updateMatchEntry(id: string, data: Partial<MatchEntry>) {
   if (idx !== -1) {
     entries[idx] = { ...entries[idx], ...data };
     saveMatchEntries(entries);
+    void setDoc(doc(collection(db, 'matchEntries'), entries[idx].id), entries[idx]).catch(() => {});
   }
 }
 
 export function deleteMatchEntry(id: string) {
-  saveMatchEntries(getMatchEntries().filter(e => e.id !== id));
+  const remaining = getMatchEntries().filter(e => e.id !== id);
+  saveMatchEntries(remaining);
+  void deleteDoc(doc(collection(db, 'matchEntries'), id)).catch(() => {});
 }
 
 export function getPointsForRank(rank: number, totalPlayers: number): number {
