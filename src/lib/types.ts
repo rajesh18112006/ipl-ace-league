@@ -4,11 +4,20 @@ export interface Player {
   createdAt: string;
 }
 
+export type MatchStatus = 'Upcoming' | 'Draft' | 'Completed' | 'Locked';
+
+// Per-match per-player value:
+// - `number` => entered rank
+// - `'not_played'` => Not Played
+export type PlayerMatchValue = number | 'not_played';
+
 export interface MatchEntry {
   id: string;
   matchId: string; // references IPL schedule
   date: string;
-  rankings: Record<string, number | null>; // playerId -> rank (null = missed)
+  status: Exclude<MatchStatus, 'Upcoming'>;
+  tieSystemEnabled?: boolean;
+  rankings: Partial<Record<string, PlayerMatchValue>>; // playerId -> rank/'not_played'
 }
 
 export interface IPLMatch {

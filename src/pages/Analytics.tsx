@@ -102,7 +102,7 @@ export default function AnalyticsPage() {
                   <div><span className="text-muted-foreground">Points</span><p className="font-bold text-primary text-lg">{s.totalPoints}</p></div>
                   <div><span className="text-muted-foreground">Avg Rank</span><p className="font-bold text-lg">{s.averageRank || '-'}</p></div>
                   <div><span className="text-muted-foreground">Played</span><p className="font-bold">{s.matchesPlayed}</p></div>
-                  <div><span className="text-muted-foreground">Missed</span><p className="font-bold">{s.matchesMissed}</p></div>
+                  <div><span className="text-muted-foreground">Not Played</span><p className="font-bold">{s.matchesMissed}</p></div>
                 </div>
               </motion.div>
             ))}
@@ -116,7 +116,7 @@ export default function AnalyticsPage() {
               {[
                 { label: 'Total Points', value: selectedStats.totalPoints, accent: true },
                 { label: 'Matches Played', value: selectedStats.matchesPlayed },
-                { label: 'Missed', value: selectedStats.matchesMissed },
+                { label: 'Not Played', value: selectedStats.matchesMissed },
                 { label: 'Avg Rank', value: selectedStats.averageRank || '-' },
                 { label: 'Best Rank', value: selectedStats.bestRank || '-' },
                 { label: 'Worst Rank', value: selectedStats.worstRank || '-' },

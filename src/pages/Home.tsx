@@ -3,9 +3,11 @@ import { motion } from 'framer-motion';
 import { Trophy, Zap, Calendar, Star } from 'lucide-react';
 import { getPlayers, getMatchEntries } from '@/lib/storage';
 import { getLeaderboard, getDayTopPerformer } from '@/lib/analytics';
-import { getTodayMatch, getUpcomingMatches, IPL_TEAMS } from '@/lib/ipl-schedule';
+import { getTodayMatch, getUpcomingMatches, IPL_SCHEDULE, IPL_TEAMS } from '@/lib/ipl-schedule';
 import { Link } from 'react-router-dom';
 import { Player, MatchEntry } from '@/lib/types';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { getMatchDate, isMatchFullyAssigned } from '@/lib/match-scoring';
 
 const fadeUp = (i: number) => ({
   initial: { opacity: 0, y: 20 },
@@ -24,8 +26,17 @@ export default function HomePage() {
   const todayMatch = getTodayMatch();
   const upcoming = getUpcomingMatches(5);
   const leaderboard = getLeaderboard(players, entries).slice(0, 5);
-  const lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
-  const topPerformer = lastEntry ? getDayTopPerformer(lastEntry, players) : null;
+  const scorableEntries = entries.filter(
+    e => (e.status === 'Completed' || e.status === 'Locked') && isMatchFullyAssigned(e, players),
+  );
+  const totalMatches = IPL_SCHEDULE.length;
+  const completedMatches = scorableEntries.length;
+  const draftMatches = entries.filter(e => e.status === 'Draft').length;
+
+  const lastScorableEntry = scorableEntries
+    .slice()
+    .sort((a, b) => getMatchDate(b).localeCompare(getMatchDate(a)))[0];
+  const topPerformer = lastScorableEntry ? getDayTopPerformer(lastScorableEntry, players) : null;
 
   return (
     <div className="space-y-6">
@@ -81,6 +92,14 @@ export default function HomePage() {
             </h2>
             <Link to="/leaderboard" className="text-xs text-primary hover:underline">View all →</Link>
           </div>
+          <Alert className="mb-4">
+            <AlertTitle>Leaderboard is based only on completed matches</AlertTitle>
+            <AlertDescription className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+              <span>Total matches: <span className="font-medium">{totalMatches}</span></span>
+              <span>Completed matches: <span className="font-medium">{completedMatches}</span></span>
+              <span>Draft matches: <span className="font-medium">{draftMatches}</span></span>
+            </AlertDescription>
+          </Alert>
           {leaderboard.length > 0 ? (
             <div className="space-y-2">
               {leaderboard.map((s, i) => (

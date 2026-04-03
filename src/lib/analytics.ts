@@ -1,12 +1,13 @@
 import { Player, MatchEntry, PlayerStats, PlayerBadge } from './types';
 import { getPointsForRank } from './storage';
-import { IPL_SCHEDULE } from './ipl-schedule';
+import { getMatchDate, isMatchScorable } from './match-scoring';
 
 export function calculatePlayerStats(player: Player, entries: MatchEntry[], allPlayers: Player[]): PlayerStats {
   const totalPlayers = allPlayers.length;
-  const playerEntries = entries.filter(e => e.rankings[player.id] !== undefined);
-  const playedEntries = playerEntries.filter(e => e.rankings[player.id] !== null);
-  const missedEntries = playerEntries.filter(e => e.rankings[player.id] === null);
+  const scorableEntries = entries.filter(e => isMatchScorable(e, allPlayers));
+  const playerEntries = scorableEntries.filter(e => e.rankings[player.id] !== undefined);
+  const playedEntries = playerEntries.filter(e => typeof e.rankings[player.id] === 'number');
+  const notPlayedEntries = playerEntries.filter(e => e.rankings[player.id] === 'not_played');
 
   const ranks = playedEntries.map(e => e.rankings[player.id] as number);
   const bestRank = ranks.length > 0 ? Math.min(...ranks) : 0;
@@ -15,13 +16,13 @@ export function calculatePlayerStats(player: Player, entries: MatchEntry[], allP
 
   let cumulative = 0;
   const pointsHistory = entries
+    .filter(e => isMatchScorable(e, allPlayers))
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(e => {
-      const rank = e.rankings[player.id];
-      const points = rank !== null && rank !== undefined ? getPointsForRank(rank, totalPlayers) : 0;
+      const v = e.rankings[player.id];
+      const points = typeof v === 'number' ? getPointsForRank(v, totalPlayers) : 0;
       cumulative += points;
-      const match = IPL_SCHEDULE.find(m => m.id === e.matchId);
-      return { date: match?.date || e.date, points, cumulative };
+      return { date: getMatchDate(e), points, cumulative };
     });
 
   const rankDistribution: Record<number, number> = {};
@@ -29,13 +30,13 @@ export function calculatePlayerStats(player: Player, entries: MatchEntry[], allP
 
   // Streak
   let currentStreak: PlayerStats['currentStreak'] = { type: 'none', count: 0 };
-  const sortedEntries = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+  const sortedEntries = [...scorableEntries].sort((a, b) => b.date.localeCompare(a.date));
   let streakType: 'win' | 'loss' | 'none' = 'none';
   let streakCount = 0;
   for (const entry of sortedEntries) {
-    const rank = entry.rankings[player.id];
-    if (rank === null || rank === undefined) continue;
-    const isWin = rank === 1;
+    const v = entry.rankings[player.id];
+    if (typeof v !== 'number') continue; // missed/not played don't affect streak
+    const isWin = v === 1;
     if (streakType === 'none') {
       streakType = isWin ? 'win' : 'loss';
       streakCount = 1;
@@ -52,7 +53,7 @@ export function calculatePlayerStats(player: Player, entries: MatchEntry[], allP
     playerName: player.name,
     totalPoints: cumulative,
     matchesPlayed: playedEntries.length,
-    matchesMissed: missedEntries.length + (entries.length - playerEntries.length),
+    matchesMissed: notPlayedEntries.length,
     averageRank: Math.round(averageRank * 100) / 100,
     bestRank,
     worstRank,
@@ -81,7 +82,7 @@ export function getBadges(stats: PlayerStats): PlayerBadge[] {
     badges.push({ type: 'streak_master', label: 'On Fire', description: '3+ win streak', icon: '🔥' });
   }
   if (stats.matchesMissed === 0 && stats.matchesPlayed >= 5) {
-    badges.push({ type: 'iron_man', label: 'Iron Man', description: 'Never missed a match', icon: '🦾' });
+    badges.push({ type: 'iron_man', label: 'Iron Man', description: 'Never marked Not Played', icon: '🦾' });
   }
 
   return badges;
@@ -91,7 +92,7 @@ export function getDayTopPerformer(entry: MatchEntry, players: Player[]): Player
   let topId: string | null = null;
   let topRank = Infinity;
   for (const [pid, rank] of Object.entries(entry.rankings)) {
-    if (rank !== null && rank < topRank) {
+    if (typeof rank === 'number' && rank < topRank) {
       topRank = rank;
       topId = pid;
     }

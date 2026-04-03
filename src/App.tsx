@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import AppLayout from "./components/AppLayout";
 import Home from "./pages/Home";
 import MatchEntry from "./pages/MatchEntry";
+import TodayMatches from "./pages/TodayMatches";
 import Leaderboard from "./pages/Leaderboard";
 import Analytics from "./pages/Analytics";
 import Players from "./pages/Players";
@@ -21,6 +22,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/match-entry" element={<MatchEntry />} />
+            <Route path="/today-matches" element={<TodayMatches />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/players" element={<Players />} />

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Calendar, Trophy, BarChart3, Users, Menu, X, Download, Upload } from 'lucide-react';
+import { Home, Calendar, CalendarDays, Trophy, BarChart3, Users, Menu, X, Download, Upload } from 'lucide-react';
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { exportData, importData } from '@/lib/storage';
@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 const navItems = [
   { path: '/', label: 'Home', icon: Home },
   { path: '/match-entry', label: 'Match Entry', icon: Calendar },
+  { path: '/today-matches', label: 'Today Matches', icon: CalendarDays },
   { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
   { path: '/players', label: 'Players', icon: Users },

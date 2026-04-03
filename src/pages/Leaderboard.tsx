@@ -4,6 +4,9 @@ import { Trophy, TrendingUp, Flame, Target } from 'lucide-react';
 import { getPlayers, getMatchEntries } from '@/lib/storage';
 import { getLeaderboard, getBadges } from '@/lib/analytics';
 import { Player, MatchEntry, PlayerStats } from '@/lib/types';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { IPL_SCHEDULE } from '@/lib/ipl-schedule';
+import { isMatchFullyAssigned } from '@/lib/match-scoring';
 
 export default function LeaderboardPage() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -15,6 +18,11 @@ export default function LeaderboardPage() {
   }, []);
 
   const leaderboard = getLeaderboard(players, entries);
+  const totalMatches = IPL_SCHEDULE.length;
+  const completedMatches = entries.filter(
+    e => (e.status === 'Completed' || e.status === 'Locked') && isMatchFullyAssigned(e, players),
+  ).length;
+  const draftMatches = entries.filter(e => e.status === 'Draft').length;
 
   return (
     <div className="space-y-6">
@@ -22,6 +30,15 @@ export default function LeaderboardPage() {
         <h1 className="font-heading text-2xl font-bold gradient-text">Leaderboard</h1>
         <p className="text-muted-foreground text-sm mt-1">Overall standings across all matches</p>
       </motion.div>
+
+      <Alert>
+        <AlertTitle>Leaderboard is based only on completed matches</AlertTitle>
+        <AlertDescription className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+          <span>Total matches: <span className="font-medium">{totalMatches}</span></span>
+          <span>Completed matches: <span className="font-medium">{completedMatches}</span></span>
+          <span>Draft matches: <span className="font-medium">{draftMatches}</span></span>
+        </AlertDescription>
+      </Alert>
 
       {leaderboard.length > 0 ? (
         <>
