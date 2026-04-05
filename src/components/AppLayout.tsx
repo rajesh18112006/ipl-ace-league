@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 const navItems = [
   { path: '/', label: 'Home', icon: Home },
   { path: '/match-entry', label: 'Match Entry', icon: Calendar },
-  { path: '/today-matches', label: 'Today Matches', icon: CalendarDays },
+{ path: '/today-matches', label: 'All Matches', icon: CalendarDays },
   { path: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
   { path: '/players', label: 'Players', icon: Users },

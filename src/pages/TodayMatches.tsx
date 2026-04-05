@@ -8,96 +8,189 @@ import { MatchEntry, Player } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
+const START_DATE = '2026-04-03';
+
+function getLocalDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function TodayMatchesPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [entries, setEntries] = useState<MatchEntry[]>([]);
 
   useEffect(() => {
-    const unsubPlayers = subscribePlayers(setPlayers, () => toast.error('Failed to load players from Firebase'));
-    const unsubEntries = subscribeMatchEntries(setEntries, () => toast.error('Failed to load match entries from Firebase'));
+    const unsubPlayers = subscribePlayers(
+      setPlayers,
+      () => toast.error('Failed to load players from Firebase')
+    );
+
+    const unsubEntries = subscribeMatchEntries(
+      setEntries,
+      () => toast.error('Failed to load match entries from Firebase')
+    );
+
     return () => {
       unsubPlayers();
       unsubEntries();
     };
   }, []);
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const matchesFromToday = useMemo(
-    () => IPL_SCHEDULE.filter(m => m.date >= todayStr),
-    [todayStr],
+  const todayStr = useMemo(() => getLocalDateString(), []);
+
+  const enteredMatchIds = useMemo(
+    () => new Set(entries.map((entry) => entry.matchId)),
+    [entries]
   );
 
-  const getEntry = (matchId: string) => entries.find(e => e.matchId === matchId) || null;
+  const eligibleMatches = useMemo(() => {
+    return IPL_SCHEDULE.filter((match) => match.date >= START_DATE);
+  }, []);
+
+  const missedMatchIds = useMemo(() => {
+    return new Set(
+      eligibleMatches
+        .filter(
+          (match) => match.date < todayStr && !enteredMatchIds.has(match.id)
+        )
+        .map((match) => match.id)
+    );
+  }, [eligibleMatches, todayStr, enteredMatchIds]);
+
+  const visibleMatches = useMemo(() => {
+    return eligibleMatches
+      .filter(
+        (match) =>
+          match.date >= todayStr ||
+          enteredMatchIds.has(match.id) ||
+          missedMatchIds.has(match.id)
+      )
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.matchNumber - b.matchNumber;
+      });
+  }, [eligibleMatches, todayStr, enteredMatchIds, missedMatchIds]);
+
+  const getEntry = (matchId: string) =>
+    entries.find((entry) => entry.matchId === matchId) || null;
 
   return (
     <div className="space-y-6">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="font-heading text-2xl font-bold gradient-text">Today Matches</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Matches from today onward (showing previously entered ranks)
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h1 className="font-heading text-2xl font-bold gradient-text">
+          All Matches
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Matches from your selected start date onward
         </p>
       </motion.div>
 
-      {matchesFromToday.length === 0 ? (
+      {visibleMatches.length === 0 ? (
         <div className="glass-card p-12 text-center">
-          <CalendarDays size={48} className="text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">No matches scheduled from today.</p>
+          <CalendarDays
+            size={48}
+            className="mx-auto mb-4 text-muted-foreground"
+          />
+          <p className="text-muted-foreground">No matches available.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {matchesFromToday.map(m => {
-            const entry = getEntry(m.id);
-            const fully = entry ? isMatchFullyAssigned(entry, players) : false;
+          {visibleMatches.map((match) => {
+            const entry = getEntry(match.id);
+            const fullyAssigned = entry
+              ? isMatchFullyAssigned(entry, players)
+              : false;
+
             const playersSorted = entry
               ? [...players].sort((a, b) => {
-                  const va = entry.rankings?.[a.id];
-                  const vb = entry.rankings?.[b.id];
+                  const valueA = entry.rankings?.[a.id];
+                  const valueB = entry.rankings?.[b.id];
 
-                  const rankA = typeof va === 'number' ? va : va === 'not_played' ? Number.MAX_SAFE_INTEGER - 1 : Number.MAX_SAFE_INTEGER;
-                  const rankB = typeof vb === 'number' ? vb : vb === 'not_played' ? Number.MAX_SAFE_INTEGER - 1 : Number.MAX_SAFE_INTEGER;
+                  const rankA =
+                    typeof valueA === 'number'
+                      ? valueA
+                      : valueA === 'not_played'
+                        ? Number.MAX_SAFE_INTEGER - 1
+                        : Number.MAX_SAFE_INTEGER;
+
+                  const rankB =
+                    typeof valueB === 'number'
+                      ? valueB
+                      : valueB === 'not_played'
+                        ? Number.MAX_SAFE_INTEGER - 1
+                        : Number.MAX_SAFE_INTEGER;
 
                   if (rankA !== rankB) return rankA - rankB;
-                  // Tie-break by name for a stable, non-random UI.
                   return a.name.localeCompare(b.name);
                 })
               : players;
 
             return (
-              <div key={m.id} className="glass-card p-5">
+              <div key={match.id} className="glass-card p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-muted-foreground">#{m.matchNumber}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        #{match.matchNumber}
+                      </span>
                       <span className="font-heading font-bold">
-                        {m.team1} vs {m.team2}
+                        {match.team1} vs {match.team2}
                       </span>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {new Date(m.date + 'T00:00:00').toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                      })}
+
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {new Date(`${match.date}T00:00:00`).toLocaleDateString(
+                        'en-IN',
+                        {
+                          day: 'numeric',
+                          month: 'short',
+                        }
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     {entry ? (
                       <>
                         {entry.status === 'Completed' && (
-                          <Badge className="bg-primary/10 text-primary border-primary/20">✅ Completed</Badge>
+                          <Badge className="border-primary/20 bg-primary/10 text-primary">
+                            ✅ Completed
+                          </Badge>
                         )}
+
                         {entry.status === 'Draft' && (
-                          <Badge className="bg-neon-green/10 text-neon-green border-neon-green/20">🟡 Draft</Badge>
+                          <Badge className="border-yellow-500/20 bg-yellow-500/10 text-yellow-400">
+                            🟡 Draft
+                          </Badge>
                         )}
+
                         {entry.status === 'Locked' && (
-                          <Badge className="bg-secondary/50 text-foreground border-border">🔒 Locked</Badge>
+                          <Badge className="border-border bg-secondary/50 text-foreground">
+                            🔒 Locked
+                          </Badge>
                         )}
-                        {!fully && (
-                          <Badge className="bg-destructive/10 text-destructive border-destructive/20">❌ Missing Data</Badge>
+
+                        {!fullyAssigned && (
+                          <Badge className="border-destructive/20 bg-destructive/10 text-destructive">
+                            ❌ Missing Data
+                          </Badge>
                         )}
                       </>
+                    ) : match.date < todayStr ? (
+                      <Badge className="border-red-500/20 bg-red-500/10 text-red-400">
+                        ⚠ Missed Entry
+                      </Badge>
                     ) : (
-                      <Badge variant="outline" className="bg-secondary/20 text-muted-foreground border-border">
+                      <Badge
+                        variant="outline"
+                        className="border-border bg-secondary/20 text-muted-foreground"
+                      >
                         ⏳ Upcoming
                       </Badge>
                     )}
@@ -107,23 +200,29 @@ export default function TodayMatchesPage() {
                 {entry ? (
                   <div className="mt-4">
                     <div className="flex flex-wrap gap-2">
-                      {playersSorted.map(p => {
-                        const v = entry.rankings?.[p.id];
+                      {playersSorted.map((player) => {
+                        const value = entry.rankings?.[player.id];
+
                         const label =
-                          typeof v === 'number'
-                            ? `#${v}`
-                            : v === 'not_played'
+                          typeof value === 'number'
+                            ? `#${value}`
+                            : value === 'not_played'
                               ? 'Not Played'
                               : '—';
+
                         const tone =
-                          typeof v === 'number'
+                          typeof value === 'number'
                             ? 'bg-primary/10 text-primary'
-                            : v === 'not_played'
+                            : value === 'not_played'
                               ? 'bg-muted text-muted-foreground'
                               : 'bg-destructive/15 text-destructive';
+
                         return (
-                          <span key={p.id} className={`text-xs px-2 py-1 rounded ${tone}`}>
-                            {p.name}: {label}
+                          <span
+                            key={player.id}
+                            className={`rounded px-2 py-1 text-xs ${tone}`}
+                          >
+                            {player.name}: {label}
                           </span>
                         );
                       })}
@@ -131,7 +230,9 @@ export default function TodayMatchesPage() {
                   </div>
                 ) : (
                   <div className="mt-4 text-sm text-muted-foreground">
-                    No entry yet. Use <span className="text-primary font-medium">Match Entry</span> to record today’s match.
+                    No entry yet. Use{' '}
+                    <span className="font-medium text-primary">Match Entry</span>{' '}
+                    to record this match.
                   </div>
                 )}
               </div>
@@ -142,4 +243,3 @@ export default function TodayMatchesPage() {
     </div>
   );
 }
-
